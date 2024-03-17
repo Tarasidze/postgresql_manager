@@ -1,0 +1,121 @@
+"""Module provides save data to database and damp database to file."""
+
+from __future__ import annotations
+import os
+import datetime
+import subprocess
+
+from sqlalchemy import text
+
+from database_init import SessionLocal
+from scraper_autoria.database.models.car import Car
+from scraper_autoria.services.loger import logging
+
+from dotenv import load_dotenv
+
+
+load_dotenv()
+
+
+class CarDbManager:
+
+    @staticmethod
+    def save_car_to_database(cat_data_: Car) -> None:
+        """Save car to database."""
+        with SessionLocal() as session:
+            session.add(cat_data_)
+            session.commit()
+
+    @staticmethod
+    def dump_database_to_file() -> None:
+        """Backup postgres db to a file."""
+        current_datetime = datetime.datetime.now().strftime("%Y-%m-%d_%H%M")
+        filename = f"database_{current_datetime}.sql"
+        file_path = os.path.abspath(os.path.join("dumps", filename))
+
+        os.makedirs("dumps", exist_ok=True)
+
+        try:
+            process = subprocess.Popen(
+                [
+                    "pg_dump",
+                    "--dbname=postgresql://{}:{}@{}:{}/{}".format(
+                         os.getenv("POSTGRES_USER"),
+                         os.getenv("POSTGRES_PASSWORD"),
+                         os.getenv("POSTGRES_HOST"),
+                         os.getenv("PORT"),
+                         os.getenv("POSTGRES_DB"),
+                    ),
+                    "-f", file_path
+                ],
+                stdout=subprocess.PIPE
+            )
+
+            if process.returncode != 0:
+                logging.info(
+                    f"Time: {datetime.datetime.now()},"
+                    f" database dumped"
+                    f"{process.communicate()[0]}"
+                )
+                exit(1)
+
+        except Exception as e:
+            logging.info(
+                f"Time: {datetime.datetime.now()},"
+                f" Dump database error{e}."
+            )
+            exit(1)
+
+    @staticmethod
+    def check_database_connection(session_: SessionLocal) -> bool:
+        """Simple checking database connection."""
+        try:
+            session_.execute(text("SELECT 1"))
+            return True
+        except Exception as e:
+            logging.info(
+                f"Time: {datetime.datetime.now()},"
+                f" database connection error: {e}"
+            )
+            return False
+
+
+def backup_postgres_db(host, database_name, port, user, password, dest_file, verbose):
+    """
+    Backup postgres db to a file.
+    """
+    if verbose:
+        try:
+            process = subprocess.Popen(
+                ['pg_dump',
+                 '--dbname=postgresql://{}:{}@{}:{}/{}'.format(user, password, host, port, database_name),
+                 '-Fc',
+                 '-f', dest_file,
+                 '-v'],
+                stdout=subprocess.PIPE
+            )
+            output = process.communicate()[0]
+            if int(process.returncode) != 0:
+                print('Command failed. Return code : {}'.format(process.returncode))
+                exit(1)
+            return output
+        except Exception as e:
+            print(e)
+            exit(1)
+    else:
+
+        try:
+            process = subprocess.Popen(
+                ['pg_dump',
+                 '--dbname=postgresql://{}:{}@{}:{}/{}'.format(user, password, host, port, database_name),
+                 '-f', dest_file],
+                stdout=subprocess.PIPE
+            )
+            output = process.communicate()[0]
+            if process.returncode != 0:
+                print('Command failed. Return code : {}'.format(process.returncode))
+                exit(1)
+            return output
+        except Exception as e:
+            print(e)
+            exit(1)
